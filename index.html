@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Краснокумка Метео — Панель</title>
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            color: white; 
+            background-color: #0f172a; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            padding: 10px;
+        }
+        
+        .weather-card { 
+            width: 600px; 
+            max-height: 95vh;
+            background: #1e293b; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            border-radius: 24px; 
+            padding: 20px; 
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        
+        h2 { text-align: center; margin-bottom: 2px; font-size: 22px; color: #38bdf8; }
+        
+        /* СТИЛИ ДЛЯ ИНДИКАТОРА СЕТИ ПЛАТЫ */
+        .online-status {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            transition: color 0.3s ease;
+        }
+        .status-online { color: #2ecc71; }
+        .status-offline { color: #e74c3c; }
+        
+        .stat { display: flex; justify-content: space-between; margin: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px; font-size: 15px; }
+        .stat strong { color: #00f2fe; font-size: 16px; }
+        
+        .chart-panel { background: rgba(0,0,0,0.2); border-radius: 14px; padding: 8px; margin-top: 10px; border: 1px solid rgba(255,255,255,0.05); }
+        .chart-title { font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 2px; text-align: center; }
+        
+        .fc-container { display: flex; gap: 10px; margin-top: 10px; justify-content: space-between; }
+        .fc-day-card { background: rgba(255,255,255,0.03); padding: 8px; border-radius: 12px; text-align: center; flex: 1; font-size: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .fc-day-card .fc-date { font-weight: bold; color: #38bdf8; margin-bottom: 2px; }
+        .fc-day-card .fc-temp { font-size: 15px; font-weight: bold; color: #00f2fe; }
+        
+        .advice-box { background: rgba(56, 189, 248, 0.1); padding: 8px; border-radius: 12px; margin-top: 8px; font-size: 13px; text-align: center; border-left: 5px solid #38bdf8; color: #e2e8f0; }
+    </style>
+</head>
+<body>
+
+    <div class="weather-card">
+        <h2>📡 Краснокумка Метео</h2>
+        <!-- Живой статус подключения платы -->
+        <div id="board-status" class="online-status status-offline">Проверка связи с платой...</div>
+        
+        <div class="stat"><span>#️⃣ Температура:</span> <strong id="temp">--</strong></div>
+        <div class="stat"><span>💧 Влажность:</span> <strong id="humidity">--</strong></div>
+        <div class="stat"><span>☀️ УФ-Индекс:</span> <strong id="uv">--</strong></div>
+        <div class="stat"><span>💨 Воздух (MQ135):</span> <strong id="air">--</strong></div>
+        <div class="stat"><span>🌧️ Осадки (YL-83):</span> <strong id="rain">--</strong></div>
+        <div class="advice-box" id="weather-advice">Подключение к Firebase...</div>
+        
+        <div class="chart-panel">
+            <div class="chart-title">Изменение за 24 часа</div>
+            <canvas id="trendsChart" width="550" height="115"></canvas>
+        </div>
+        
+        <div class="fc-box">
+            <div class="fc-container">
+                <div class="fc-day-card"><div class="fc-date">Завтра</div><div id="fc-d1-t" class="fc-temp">--</div><div id="fc-d1-w" style="font-size:10px; color:#94a3b8; margin-top:2px;">--</div></div>
+                <div class="fc-day-card"><div class="fc-date">Писл.</div><div id="fc-d2-t" class="fc-temp">--</div><div id="fc-d2-w" style="font-size:10px; color:#94a3b8; margin-top:2px;">--</div></div>
+                <div class="fc-day-card"><div class="fc-date">3-й день</div><div id="fc-d3-t" class="fc-temp">--</div><div id="fc-d3-w" style="font-size:10px; color:#94a3b8; margin-top:2px;">--</div></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dbUrl = "https://firebaseio.com";
+        let trendChart;
+
+        function initChart() { 
+            trendChart = new Chart(document.getElementById('trendsChart').getContext('2d'), { 
+                type: 'line', 
+                data: { labels: ['00', '04', '08', '12', '16', '20'], datasets: [{ data:, borderColor: '#38bdf8', borderWidth: 2, pointBackgroundColor: '#38bdf8', tension: 0.4, fill: false }] }, 
+                options: { responsive: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', font: { size: 10 } } }, y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#94a3b8', font: { size: 10 } } } } } 
+            }); 
+        }
+        
+        function updateChartData(t) { if(trendChart) { trendChart.data.datasets[0].data[5] = parseFloat(t); trendChart.update(); } }
+        
+        function parseForecastToCards(txt) { 
+            try { 
+                if(!txt || txt.indexOf("День 1") == -1) return; 
+                for(let i=1; i<=3; i++) { 
+                    let s = txt.indexOf(`День ${i}: `) + 8, e = txt.indexOf("; ", s), all = txt.substring(s, e).split("C ("); 
+                    document.getElementById(`fc-d${i}-t`).innerText = parseFloat(all) + "°"; 
+                    document.getElementById(`fc-d${i}-w`).innerText = all ? all[1].replace(")", "") : "--"; 
+                } 
+            } catch(e){} 
+        }
+
+        // Функция отслеживания активности твоей ESP32 платы
+        function checkBoardOnline(lastTimeRaw) {
+            const statusEl = document.getElementById('board-status');
+            if (!lastTimeRaw) {
+                statusEl.innerText = "Плата отключена от сети 🔴";
+                statusEl.className = "online-status status-offline";
+                return;
+            }
+
+            // Парсим время последнего обновления (оно должно быть в формате timestamp от ESP32 или Firebase)
+            const lastUpdate = new Date(lastTimeRaw).getTime();
+            const now = new Date().getTime();
+
+            // Если плата не присылала данные больше 15 секунд — она оффлайн
+            if (now - lastUpdate > 15000) {
+                statusEl.innerText = "Плата отключена от сети 🔴";
+                statusEl.className = "online-status status-offline";
+            } else {
+                statusEl.innerText = "Плата подключена к сети 🟢";
+                statusEl.className = "online-status status-online";
+            }
+        }
+        
+        function updateData() { 
+            fetch(dbUrl).then(res => res.json()).then(data => { 
+                if(!data) {
+                    checkBoardOnline(null);
+                    return; 
+                } 
+                document.getElementById('temp').innerText = data.temp + " °C"; 
+                document.getElementById('humidity').innerText = data.humidity + " %"; 
+                document.getElementById('uv').innerText = data.uv; 
+                document.getElementById('air').innerText = data.air; 
+                let isRain = (data.rain < 2000); 
+                document.getElementById('rain').innerText = isRain ? "Идет дождь! 🌧" : "Сухо ☀️"; 
+                parseForecastToCards(data.forecast); 
+                
+                if (data.uv >= 5.0 || data.temp >= 30) { 
+                    document.getElementById('weather-advice').innerText = "⚠️ Надень кепочку, береги себя!"; 
+                } else { 
+                    document.getElementById('weather-advice').innerText = "🟢 Погода отличная, комфортно!"; 
+                }
+                
+                // Передаем системное время или метку из базы данных для проверки сети
+                // Если твоя ESP32 отправляет время в data.timestamp, используй его, иначе берем текущее время успешного ответа базы
+                const timeStamp = data.timestamp ? data.timestamp : new Date();
+                checkBoardOnline(timeStamp);
+                
+                updateChartData(data.temp); 
+            }).catch(()=>{
+                document.getElementById('weather-advice').innerText = "Ошибка связи с базой.";
+                checkBoardOnline(null);
+            }); 
+        }
+        
+        window.onload = () => { initChart(); updateData(); setInterval(updateData, 5000); };
+    </script>
+</body>
+</html>
